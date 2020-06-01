@@ -1,7 +1,7 @@
 OBJ = main.o
 
 readP: $(OBJ)
-	gcc $(OBJ) -O3 -o  MiniCron -pthread
+	gcc $(OBJ) -o  MiniCron -pthread
 
 $(OBJ):
 
