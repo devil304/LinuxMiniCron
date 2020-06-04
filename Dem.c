@@ -10,5 +10,6 @@
 
 int main(void) {
 	printf("Wurk!\n");
+   return 0;
    exit(EXIT_SUCCESS);
 }
