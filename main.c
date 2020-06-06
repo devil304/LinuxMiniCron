@@ -181,11 +181,11 @@ void ReadTasksFunc()
     count--;
 
     alarm(difftime(timelocal(info), current_time));
-    printf("%d\n", x);
+    /*printf("%d\n", x);
     for (int y = 0; y < x; y++)
     {
         printf("Task nr: %d, h: %d, m: %d, Comm: %s, Inf: %d \n", y, tasks[y].h, tasks[y].m, tasks[y].command, tasks[y].info);
-    }
+    }*/
 }
 
 void reReadTasks(int sig)
