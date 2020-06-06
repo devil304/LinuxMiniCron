@@ -110,12 +110,10 @@ void exitSigHandler(int sig)
     exit(EXIT_SUCCESS);
 }
 char *path;
-void ReadTasksFunc(int first)
+void ReadTasksFunc()
 {
-    if (first == 1)
-    {
-        task_file = fopen(path, "r");
-    }
+    free(tasks);
+    task_file = fopen(path, "r");
     char *line = NULL;
     size_t len = 0;
     ssize_t read;
@@ -156,7 +154,9 @@ void ReadTasksFunc(int first)
             printf("Error in parsing tasks file.");
             exit(EXIT_FAILURE);
         }
+        free(token);
     }
+    free(line);
     fclose(task_file);
     for (int h = x - 1; h >= 0; h--)
     {
@@ -168,12 +168,30 @@ void ReadTasksFunc(int first)
             }
         }
     }
+    count = 0;
+    current_time = time(NULL);
+    info = localtime(&current_time);
+    do
+    {
+        info->tm_hour = tasks[count].h % 25;
+        info->tm_min = tasks[count].m % 61;
+        info->tm_sec = 0;
+        count++;
+    } while (difftime(timelocal(info), current_time) < 0);
+    count--;
+
+    alarm(difftime(timelocal(info), current_time));
+    printf("%d\n", x);
+    for (int y = 0; y < x; y++)
+    {
+        printf("Task nr: %d, h: %d, m: %d, Comm: %s, Inf: %d \n", y, tasks[y].h, tasks[y].m, tasks[y].command, tasks[y].info);
+    }
 }
 
 void reReadTasks(int sig)
 {
     signal(SIGUSR1, SIG_IGN);
-    ReadTasksFunc(1);
+    ReadTasksFunc();
 }
 
 int main(int argc, char *argv[])
@@ -194,8 +212,18 @@ int main(int argc, char *argv[])
         printf("Not enough arguments.");
         exit(EXIT_FAILURE);
     }
-
-    ReadTasksFunc(1);
+    char cwd[100];
+    if (getcwd(cwd, sizeof(cwd)) == NULL)
+    {
+        perror("getcwd() error");
+        exit(EXIT_FAILURE);
+    }
+    size_t len = strlen("/");
+    strncat(cwd, "/", len);
+    len = strlen(path);
+    strncat(cwd, path, len);
+    path = cwd;
+    ReadTasksFunc();
     /*printf("%d\n", x);
     for (int y = 0; y < x; y++)
     {
@@ -230,20 +258,6 @@ int main(int argc, char *argv[])
     {
         exit(EXIT_FAILURE);
     }
-
-    count = 0;
-    current_time = time(NULL);
-    info = localtime(&current_time);
-    do
-    {
-        info->tm_hour = tasks[count].h%25;
-        info->tm_min = tasks[count].m%61;
-        info->tm_sec = 0;
-        count++;
-    } while (difftime(timelocal(info), current_time) < 0);
-    count--;
-
-    alarm(difftime(timelocal(info), current_time));
 
     while (count < x)
     {
