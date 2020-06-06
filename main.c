@@ -13,7 +13,7 @@
 
 FILE *task_file;
 FILE *out_file;
-
+int x = 0;
 struct task
 {
     int h;
@@ -62,9 +62,11 @@ void AlarmHandler(int sig)
             break;
         }
         close(fd);
-        if(execl(tasks[count].command, NULL) == -1){
+        if (execl(tasks[count].command, NULL) == -1)
+        {
             syslog(LOG_ERR, "Error occurred when trying to run task nr: %d, h: %d, m: %d, Comm: %s, Inf: %d !!!\n", count, tasks[count].h, tasks[count].m, tasks[count].command, tasks[count].info);
         }
+        exit(EXIT_SUCCESS);
     }
     else
     {
@@ -93,25 +95,32 @@ void AlarmHandler(int sig)
         signal(SIGALRM, AlarmHandler);
     }
 }
-int main(int argc, char *argv[])
+
+void WritePendingTasksList(int sig)
 {
-    if (argc == 3)
+    signal(SIGUSR2, SIG_IGN);
+    for (int y = count; y < x; y++)
     {
-        task_file = fopen(argv[1], "r");
-        out_file = fopen(argv[2], "wb");
-        fclose(out_file);
-        file = argv[2];
+        syslog(LOG_INFO, "Task nr: %d, h: %d, m: %d, Comm: %s, Inf: %d \n", y, tasks[y].h, tasks[y].m, tasks[y].command, tasks[y].info);
     }
-    else
+}
+
+void exitSigHandler(int sig)
+{
+    exit(EXIT_SUCCESS);
+}
+char *path;
+void ReadTasksFunc(int first)
+{
+    if (first == 1)
     {
-        printf("Not enough arguments.");
-        exit(EXIT_FAILURE);
+        task_file = fopen(path, "r");
     }
     char *line = NULL;
     size_t len = 0;
     ssize_t read;
     tasks = malloc(sizeof(struct task));
-    int x = 0;
+    x = 0;
     while ((read = getline(&line, &len, task_file)) != -1)
     {
         x++;
@@ -148,6 +157,7 @@ int main(int argc, char *argv[])
             exit(EXIT_FAILURE);
         }
     }
+    fclose(task_file);
     for (int h = x - 1; h >= 0; h--)
     {
         for (int y = 0; y < h; y++)
@@ -158,7 +168,36 @@ int main(int argc, char *argv[])
             }
         }
     }
-    /*for (int y = 0; y < x; y++)
+}
+
+void reReadTasks(int sig)
+{
+    signal(SIGUSR1, SIG_IGN);
+    ReadTasksFunc(1);
+}
+
+int main(int argc, char *argv[])
+{
+    signal(SIGINT, exitSigHandler);
+    signal(SIGALRM, AlarmHandler);
+    signal(SIGUSR1, reReadTasks);
+    signal(SIGUSR2, WritePendingTasksList);
+    if (argc == 3)
+    {
+        path = argv[1];
+        out_file = fopen(argv[2], "wb");
+        fclose(out_file);
+        file = argv[2];
+    }
+    else
+    {
+        printf("Not enough arguments.");
+        exit(EXIT_FAILURE);
+    }
+
+    ReadTasksFunc(1);
+    /*printf("%d\n", x);
+    for (int y = 0; y < x; y++)
     {
         printf("Task nr: %d, h: %d, m: %d, Comm: %s, Inf: %d \n", y, tasks[y].h, tasks[y].m, tasks[y].command, tasks[y].info);
     }*/
@@ -197,15 +236,15 @@ int main(int argc, char *argv[])
     info = localtime(&current_time);
     do
     {
-        info->tm_hour = tasks[count].h;
-        info->tm_min = tasks[count].m;
+        info->tm_hour = tasks[count].h%25;
+        info->tm_min = tasks[count].m%61;
         info->tm_sec = 0;
         count++;
     } while (difftime(timelocal(info), current_time) < 0);
     count--;
+
     alarm(difftime(timelocal(info), current_time));
 
-    signal(SIGALRM, AlarmHandler);
     while (count < x)
     {
         current_time = time(NULL);
