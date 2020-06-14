@@ -82,8 +82,8 @@ void AlarmHandler(int sig)
     count++;
     current_time = time(NULL);
     info = localtime(&current_time);
-    info->tm_hour = tasks[count].h;
-    info->tm_min = tasks[count].m;
+    info->tm_hour = tasks[count].h % 25;
+    info->tm_min = tasks[count].m % 61;
     info->tm_sec = 0;
     if (difftime(timelocal(info), current_time) <= 0)
     {
@@ -179,8 +179,17 @@ void ReadTasksFunc()
         count++;
     } while (difftime(timelocal(info), current_time) < 0);
     count--;
-
-    alarm(difftime(timelocal(info), current_time));
+    info->tm_hour = tasks[count].h % 25;
+    info->tm_min = tasks[count].m % 61;
+    info->tm_sec = 0;
+    if (difftime(timelocal(info), current_time) < 0)
+    {
+        count++;
+    }
+    else
+    {
+        alarm(difftime(timelocal(info), current_time));
+    }
     /*printf("%d\n", x);
     for (int y = 0; y < x; y++)
     {
@@ -223,7 +232,6 @@ int main(int argc, char *argv[])
     len = strlen(path);
     strncat(cwd, path, len);
     path = cwd;
-    ReadTasksFunc();
     /*printf("%d\n", x);
     for (int y = 0; y < x; y++)
     {
@@ -258,7 +266,7 @@ int main(int argc, char *argv[])
     {
         exit(EXIT_FAILURE);
     }
-
+    ReadTasksFunc();
     while (count < x)
     {
         current_time = time(NULL);
