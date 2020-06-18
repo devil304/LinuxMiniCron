@@ -33,35 +33,35 @@ struct tm *info;
 int count = 0;
 time_t current_time;
 char *file;
+int pipeout, pipeerr;
 void AlarmHandler(int sig)
 {
     signal(SIGALRM, SIG_IGN);
     syslog(LOG_INFO, "Running task nr: %d, h: %d, m: %d, Comm: %s, Inf: %d \n", count, tasks[count].h, tasks[count].m, tasks[count].command, tasks[count].info);
     pid_t pidF;
     pidF = fork();
+    int fd = open(file, O_WRONLY | O_APPEND);
     if (pidF < 0)
     {
         exit(EXIT_FAILURE);
     }
     else if (pidF == 0)
     {
-        int fd = open(file, O_WRONLY | O_APPEND);
         switch (tasks[count].info)
         {
         case 0:
-            dup2(fd, 1);
+            dup2(fd, pipeout);
             break;
         case 1:
-            dup2(fd, 2);
+            dup2(fd, pipeerr);
             break;
         case 2:
-            dup2(fd, 2);
-            dup2(fd, 1);
+            dup2(fd, pipeerr);
+            dup2(fd, pipeout);
             break;
         default:
             break;
         }
-        close(fd);
         if (execl(tasks[count].command, NULL) == -1)
         {
             syslog(LOG_ERR, "Error occurred when trying to run task nr: %d, h: %d, m: %d, Comm: %s, Inf: %d !!!\n", count, tasks[count].h, tasks[count].m, tasks[count].command, tasks[count].info);
@@ -151,7 +151,7 @@ void ReadTasksFunc()
         }
         if (i != 4)
         {
-            printf("Error in parsing tasks file.");
+            syslog(LOG_ERR, "Error in parsing tasks file.");
             exit(EXIT_FAILURE);
         }
         free(token);
@@ -266,7 +266,26 @@ int main(int argc, char *argv[])
     {
         exit(EXIT_FAILURE);
     }
+
+    int fd;
+
+    fd = open("/dev/null", O_RDWR, 0);
+    //pipeout = open("/dev/null", O_RDWR, 0);
+    pipeerr = open("/dev/null", O_WRONLY | O_APPEND);
+
+    dup2(fd, STDIN_FILENO);
+    dup2(pipeout, STDOUT_FILENO);
+    dup2(pipeerr, STDERR_FILENO);
+
+    //close(pipeout);
+    //close(pipeerr);
+
+    close(fd);
+
     ReadTasksFunc();
+    int fd2 = open(file, O_WRONLY | O_APPEND);
+    dup2(fd2, pipeout);
+    printf("TEST \n");
     while (count < x)
     {
         current_time = time(NULL);
