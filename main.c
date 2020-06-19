@@ -34,6 +34,27 @@ int count = 0;
 time_t current_time;
 char *file;
 int pipeout, pipeerr;
+pid_t *pidFArray;
+int *arrayStarted;
+void ChildChange(int sig)
+{
+    signal(SIGCHLD, SIG_IGN);
+    int status;
+    int wpid;
+    for (int i = 0; i < sizeof(pidFArray) / sizeof(pid_t); i++)
+    {
+        if (pidFArray[i] > 0)
+        {
+            wpid = waitpid(pidFArray[i], &status, WUNTRACED);
+            if (WIFEXITED(status))
+            {
+                syslog(LOG_INFO, "Exit status of task nr: %d, exit status: %d", arrayStarted[i], WEXITSTATUS(status));
+                pidFArray[i] = -1;
+            }
+        }
+    }
+}
+
 void AlarmHandler(int sig)
 {
     signal(SIGALRM, SIG_IGN);
@@ -50,49 +71,64 @@ void AlarmHandler(int sig)
         switch (tasks[count].info)
         {
         case 0:
-            dup2(fd, pipeout);
+            dup2(fd, STDOUT_FILENO);
             break;
         case 1:
-            dup2(fd, pipeerr);
+            dup2(fd, STDERR_FILENO);
             break;
         case 2:
-            dup2(fd, pipeerr);
-            dup2(fd, pipeout);
+            dup2(fd, STDERR_FILENO);
+            dup2(fd, STDOUT_FILENO);
             break;
         default:
             break;
         }
-        if (execl(tasks[count].command, NULL) == -1)
+        close(fd);
+        if (execlp(tasks[count].command, NULL) == -1)
         {
             syslog(LOG_ERR, "Error occurred when trying to run task nr: %d, h: %d, m: %d, Comm: %s, Inf: %d !!!\n", count, tasks[count].h, tasks[count].m, tasks[count].command, tasks[count].info);
+            exit(EXIT_FAILURE);
         }
         exit(EXIT_SUCCESS);
     }
     else
     {
-        int status;
-        int wpid;
-        do
+        int test = 0;
+        for (int i = 0; i < sizeof(pidFArray) / sizeof(pid_t); i++)
         {
-            wpid = waitpid(pidF, &status, WUNTRACED);
-        } while (!WIFEXITED(status));
-        syslog(LOG_INFO, "Exit status of task nr: %d, exit status: %d", count, WIFEXITED(status));
+            if (pidFArray[i] <= 0)
+            {
+                pidFArray[i] = pidF;
+                arrayStarted[i] = count;
+                test = 1;
+            }
+        }
+        if (test == 0)
+        {
+            pidFArray = realloc(pidFArray, ((sizeof(pidFArray) / sizeof(pid_t)) + 1) * sizeof(pid_t));
+            arrayStarted = realloc(arrayStarted, ((sizeof(arrayStarted) / sizeof(int)) + 1) * sizeof(int));
+            pidFArray[(sizeof(pidFArray) / sizeof(pid_t)) - 1] = pidF;
+            arrayStarted[(sizeof(arrayStarted) / sizeof(int)) - 1] = count;
+        }
     }
 
     count++;
-    current_time = time(NULL);
-    info = localtime(&current_time);
-    info->tm_hour = tasks[count].h % 25;
-    info->tm_min = tasks[count].m % 61;
-    info->tm_sec = 0;
-    if (difftime(timelocal(info), current_time) <= 0)
+    if (count < x)
     {
-        AlarmHandler(0);
-    }
-    else
-    {
-        alarm(difftime(timelocal(info), current_time));
-        signal(SIGALRM, AlarmHandler);
+        current_time = time(NULL);
+        info = localtime(&current_time);
+        info->tm_hour = tasks[count].h % 25;
+        info->tm_min = tasks[count].m % 61;
+        info->tm_sec = 0;
+        if (difftime(timelocal(info), current_time) <= 0)
+        {
+            AlarmHandler(0);
+        }
+        else
+        {
+            alarm(difftime(timelocal(info), current_time));
+            signal(SIGALRM, AlarmHandler);
+        }
     }
 }
 
@@ -205,10 +241,15 @@ void reReadTasks(int sig)
 
 int main(int argc, char *argv[])
 {
+    signal(SIGCHLD, ChildChange);
     signal(SIGINT, exitSigHandler);
     signal(SIGALRM, AlarmHandler);
     signal(SIGUSR1, reReadTasks);
     signal(SIGUSR2, WritePendingTasksList);
+
+    pidFArray = malloc(sizeof(pid_t));
+    arrayStarted = malloc(sizeof(int));
+
     if (argc == 3)
     {
         path = argv[1];
@@ -270,24 +311,30 @@ int main(int argc, char *argv[])
     int fd;
 
     fd = open("/dev/null", O_RDWR, 0);
-    //pipeout = open("/dev/null", O_RDWR, 0);
-    pipeerr = open("/dev/null", O_WRONLY | O_APPEND);
-
     dup2(fd, STDIN_FILENO);
-    dup2(pipeout, STDOUT_FILENO);
-    dup2(pipeerr, STDERR_FILENO);
-
-    //close(pipeout);
-    //close(pipeerr);
-
-    close(fd);
 
     ReadTasksFunc();
-    int fd2 = open(file, O_WRONLY | O_APPEND);
-    dup2(fd2, pipeout);
-    printf("TEST \n");
-    while (count < x)
+    while (1)
     {
+        int test = 0;
+        for (int i = 0; i < sizeof(pidFArray) / sizeof(pid_t); i++)
+        {
+            if (pidFArray[i] > 0)
+            {
+                test = 1;
+            }
+        }
+        if (count >= x)
+        {
+            if (test == 0)
+            {
+                break;
+            }
+            else
+            {
+                ChildChange(0);
+            }
+        }
         current_time = time(NULL);
         info = localtime(&current_time);
         sleep(60);
